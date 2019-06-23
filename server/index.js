@@ -4,7 +4,8 @@ const { DateTime } = require('luxon')
 
 const app = express()
 
-const READING_SIZE = 100
+const READING_SIZE = 240
+const WAIT_TIME = (1000 * 60) * 1.5 // minutes
 
 const CHART_DOMAIN = 'https://quickchart.io/chart?c='
 
@@ -74,5 +75,5 @@ const readTemp = async () => {
 
 (async function readTempLoop () {
   await readTemp()
-  setTimeout(readTempLoop, 1000)
+  setTimeout(readTempLoop, WAIT_TIME)
 }())
