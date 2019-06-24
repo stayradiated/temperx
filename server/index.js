@@ -1,11 +1,14 @@
 const express = require('express')
 const childProcess = require('child-process-es6-promise')
 const { DateTime } = require('luxon')
+const { register, Gauge } = require('prom-client')
 
-const app = express()
+const server = express()
 
-const READING_SIZE = 240
-const WAIT_TIME = (1000 * 60) * 1.5 // minutes
+const PORT = process.env.PORT || '3000'
+const SLEEP_TIME = 1000 // every second
+const SAMPLE_HISTORY = 240
+const SAMPLE_FREQUENCY = 60
 
 const CHART_DOMAIN = 'https://quickchart.io/chart?c='
 
@@ -39,8 +42,12 @@ const timestamps = (array) => array.map((item) => item.timestamp)
 const getMax = (array) => array.reduce((a, b) => Math.max(a, b), 0)
 const getMin = (array) => array.reduce((a, b) => Math.min(a, b), Infinity)
 
-app.get('/', (req, res) => {
+const gauge = new Gauge({
+  name: 'temperature_office_berlin',
+  help: 'The temperature of the Mish Guru office in Berlin (celsius)'
+})
 
+server.get('/', (req, res) => {
   CHART_CONFIG.options.scales.yAxes[0].ticks = {
     suggestedMin: getMin(values(readings)) - 0.2,
     suggestedMax: getMax(values(readings)) + 0.2
@@ -55,25 +62,39 @@ app.get('/', (req, res) => {
   res.send(`<img src="${chartUrl}"> `)
 })
 
-app.listen(3000)
+server.get('/metrics', (req, res) => {
+	res.set('Content-Type', register.contentType)
+	res.end(register.metrics())
+})
 
-const readTemp = async () => {
+const readTemp = async (counter) => {
   const {stdout} = await childProcess.exec('../temperx')
   const value = parseFloat(stdout.trim())
-  if (readings.length >= READING_SIZE) {
-    readings.shift()
-  }
+	gauge.set(value)
 
-  const reading = {
-    timestamp: DateTime.local().toFormat('TT'),
-    value
-  }
-  console.log(reading)
+  if (counter >= SAMPLE_FREQUENCY) {
+    if (readings.length >= SAMPLE_HISTORY) {
+      readings.shift()
+    }
 
-  readings.push(reading)
+    const reading = {
+      timestamp: DateTime.local().toFormat('TT'),
+      value
+    }
+    console.log(reading)
+
+    readings.push(reading)
+    counter = 0
+  } else {
+    counter += 1
+  }
+  return counter
 }
 
-(async function readTempLoop () {
-  await readTemp()
-  setTimeout(readTempLoop, WAIT_TIME)
-}())
+(async function readTempLoop (counter) {
+  const nextValue = await readTemp(counter)
+  setTimeout(() => readTempLoop(nextValue), SLEEP_TIME)
+}(0))
+
+console.log(`Server listening to ${PORT}, metrics exposed on /metrics endpoint.`)
+server.listen(PORT)

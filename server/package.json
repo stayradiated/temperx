@@ -11,6 +11,7 @@
   "dependencies": {
     "child-process-es6-promise": "1.2.1",
     "express": "4.17.1",
-    "luxon": "1.16.0"
+    "luxon": "1.16.0",
+    "prom-client": "^11.5.2"
   }
 }
